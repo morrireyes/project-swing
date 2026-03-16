@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type IconProps = { className?: string };
@@ -168,27 +169,27 @@ function IconChart({ className }: IconProps) {
   );
 }
 
-function useTypewriter(text: string, opts?: { startDelayMs?: number; speedMs?: number }) {
-  const startDelayMs = opts?.startDelayMs ?? 450;
-  const speedMs = opts?.speedMs ?? 34;
-  const [shown, setShown] = useState("");
+function useWordReveal(words: string[], opts?: { startDelayMs?: number; wordEveryMs?: number }) {
+  const startDelayMs = opts?.startDelayMs ?? 250;
+  const wordEveryMs = opts?.wordEveryMs ?? 120;
+  const [shownCount, setShownCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     let timeout: number | undefined;
     let interval: number | undefined;
 
-    setShown("");
+    setShownCount(0);
     timeout = window.setTimeout(() => {
       let i = 0;
       interval = window.setInterval(() => {
         if (cancelled) return;
         i += 1;
-        setShown(text.slice(0, i));
-        if (i >= text.length) {
+        setShownCount(i);
+        if (i >= words.length) {
           if (interval) window.clearInterval(interval);
         }
-      }, speedMs);
+      }, wordEveryMs);
     }, startDelayMs);
 
     return () => {
@@ -196,20 +197,150 @@ function useTypewriter(text: string, opts?: { startDelayMs?: number; speedMs?: n
       if (timeout) window.clearTimeout(timeout);
       if (interval) window.clearInterval(interval);
     };
-  }, [text, startDelayMs, speedMs]);
+  }, [startDelayMs, wordEveryMs, words]);
 
-  return shown;
+  return shownCount;
+}
+
+function PremiumCursor() {
+  const dotRef = useRef<HTMLDivElement | null>(null);
+  const ringRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const dot = dotRef.current;
+    const ring = ringRef.current;
+    if (!dot || !ring) return;
+
+    let running = true;
+    let targetX = window.innerWidth / 2;
+    let targetY = window.innerHeight / 2;
+    let x = targetX;
+    let y = targetY;
+    let hovering = false;
+
+    const onMove = (e: MouseEvent) => {
+      targetX = e.clientX;
+      targetY = e.clientY;
+    };
+
+    const isHoverTarget = (el: Element | null) => {
+      if (!el) return false;
+      return Boolean(
+        el.closest(
+          'a, button, input, select, textarea, [role="button"], [data-cursor="hover"]',
+        ),
+      );
+    };
+
+    const onOver = (e: MouseEvent) => {
+      hovering = isHoverTarget(e.target as Element | null);
+      ring.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%) scale(${hovering ? 1.25 : 0.7})`;
+      ring.style.opacity = hovering ? "0.35" : "0.18";
+      dot.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%) scale(${hovering ? 0.0 : 1})`;
+      dot.style.opacity = hovering ? "0" : "1";
+    };
+
+    window.addEventListener("mousemove", onMove, { passive: true });
+    window.addEventListener("mouseover", onOver, { passive: true });
+
+    const tick = () => {
+      x += (targetX - x) * 0.18;
+      y += (targetY - y) * 0.18;
+      dot.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%) scale(${hovering ? 0.0 : 1})`;
+      ring.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%) scale(${hovering ? 1.25 : 0.7})`;
+      if (running) window.requestAnimationFrame(tick);
+    };
+
+    window.requestAnimationFrame(tick);
+
+    return () => {
+      running = false;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseover", onOver);
+    };
+  }, []);
+
+  return (
+    <>
+      <div
+        ref={ringRef}
+        aria-hidden="true"
+        className="pointer-events-none fixed left-0 top-0 z-[60] h-10 w-10 rounded-full border border-[#f5a623]/60 bg-[#f5a623]/10 opacity-20 backdrop-blur-sm transition-[opacity] duration-150"
+        style={{ willChange: "transform" }}
+      />
+      <div
+        ref={dotRef}
+        aria-hidden="true"
+        className="pointer-events-none fixed left-0 top-0 z-[61] h-2 w-2 rounded-full bg-[#f5a623]"
+        style={{ willChange: "transform" }}
+      />
+    </>
+  );
 }
 
 export default function Home() {
   const heroRef = useRef<HTMLElement | null>(null);
+  const statsRef = useRef<HTMLElement | null>(null);
   const [entered, setEntered] = useState(false);
   const [parallax, setParallax] = useState({ x: 0, y: 0 });
-  const typed = useTypewriter("Golf. Reimagined Indoors.", { startDelayMs: 550, speedMs: 34 });
+  const heroWords = useMemo(() => ["CEBU'S", "FIRST", "TRACKMAN", "FACILITY."], []);
+  const revealed = useWordReveal(heroWords, { startDelayMs: 260, wordEveryMs: 120 });
+  const [statsActive, setStatsActive] = useState(false);
+  const [stats, setStats] = useState({ members: 0, bays: 0, courses: 0 });
 
   useEffect(() => {
     const id = window.setTimeout(() => setEntered(true), 60);
     return () => window.clearTimeout(id);
+  }, []);
+
+  useEffect(() => {
+    const els = Array.from(document.querySelectorAll<HTMLElement>("[data-reveal]"));
+    if (!els.length) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) (e.target as HTMLElement).classList.add("is-revealed");
+        }
+      },
+      { threshold: 0.14, rootMargin: "0px 0px -10% 0px" },
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!statsActive) return;
+    let raf = 0;
+    const start = performance.now();
+    const duration = 950;
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const k = easeOutCubic(t);
+      setStats({
+        members: Math.round(50 * k),
+        bays: Math.round(2 * k),
+        courses: Math.round(200 * k),
+      });
+      if (t < 1) raf = window.requestAnimationFrame(tick);
+    };
+
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [statsActive]);
+
+  useEffect(() => {
+    const el = statsRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setStatsActive(true);
+      },
+      { threshold: 0.3 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
   }, []);
 
   const services = useMemo(
@@ -269,7 +400,7 @@ export default function Home() {
     [],
   );
 
-  function onMove(e: React.MouseEvent) {
+  function onMove(e: ReactMouseEvent) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width - 0.5;
     const y = (e.clientY - rect.top) / rect.height - 0.5;
@@ -282,19 +413,20 @@ export default function Home() {
 
   const parallaxStyle = {
     transform: `translate3d(${parallax.x * 10}px, ${parallax.y * 10}px, 0)`,
-  } satisfies React.CSSProperties;
+  } satisfies CSSProperties;
 
   return (
     <div
-      className="min-h-screen bg-[#070d0a] text-zinc-100 selection:bg-[#d6b25e]/30 selection:text-zinc-50"
+      className="min-h-screen cursor-none bg-[#0a0a0a] text-white selection:bg-[#f5a623]/30 selection:text-white"
       onMouseMove={onMove}
       onMouseLeave={onLeave}
     >
+      <PremiumCursor />
       {/* Background */}
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(1200px_700px_at_20%_0%,rgba(214,178,94,0.18),transparent_60%),radial-gradient(900px_650px_at_100%_20%,rgba(16,185,129,0.14),transparent_55%),radial-gradient(900px_600px_at_30%_100%,rgba(34,197,94,0.10),transparent_60%)]" />
-        <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(to_right,rgba(214,178,94,0.25)_1px,transparent_1px),linear-gradient(to_bottom,rgba(214,178,94,0.18)_1px,transparent_1px)] [background-size:80px_80px]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/20 to-black/60" />
+        <div className="absolute inset-0 bg-[radial-gradient(900px_600px_at_50%_35%,rgba(0,255,135,0.14),transparent_58%),radial-gradient(1200px_700px_at_20%_0%,rgba(245,166,35,0.16),transparent_62%),radial-gradient(900px_650px_at_100%_20%,rgba(0,255,135,0.10),transparent_55%)]" />
+        <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(to_right,rgba(245,166,35,0.35)_1px,transparent_1px),linear-gradient(to_bottom,rgba(245,166,35,0.22)_1px,transparent_1px)] [background-size:92px_92px]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/35 to-black/70" />
         <div
           className="absolute -top-40 left-[-10%] h-[520px] w-[520px] rounded-full bg-emerald-400/10 blur-3xl will-change-transform"
           style={{
@@ -303,45 +435,69 @@ export default function Home() {
           }}
         />
         <div
-          className="absolute top-24 right-[-12%] h-[460px] w-[460px] rounded-full bg-[#d6b25e]/10 blur-3xl will-change-transform"
+          className="absolute top-24 right-[-12%] h-[460px] w-[460px] rounded-full bg-[#f5a623]/10 blur-3xl will-change-transform"
           style={{
             transform: `translate3d(${parallax.x * -14}px, ${parallax.y * -14}px, 0)`,
             animation: "floatB 14s ease-in-out infinite",
           }}
         />
+        <div className="absolute inset-0 opacity-[0.04] mix-blend-overlay [background-image:var(--noise)]" />
       </div>
 
       <header className="relative z-10">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5 sm:px-8">
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl border border-[#d6b25e]/20 bg-black/20">
-              <span className="text-sm font-semibold tracking-[0.22em] text-[#d6b25e]">FC</span>
+            <div className="grid h-10 w-10 place-items-center rounded-xl border border-white/[0.06] bg-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+              <span className="font-[var(--font-display)] text-sm font-black tracking-[0.22em] text-[#f5a623]">
+                iS
+              </span>
             </div>
             <div className="leading-tight">
-              <div className="text-sm font-semibold tracking-wide text-zinc-50">The Fairway Club</div>
-              <div className="text-xs text-zinc-400">Indoor simulator lounge</div>
+              <div className="font-[var(--font-display)] text-sm font-black tracking-[0.16em] text-white uppercase">
+                iSwing PH
+              </div>
+              <div className="text-xs uppercase tracking-widest text-[#a0a0a0]">
+                Trackman indoor golf lounge
+              </div>
             </div>
           </div>
-          <nav className="hidden items-center gap-6 text-sm text-zinc-300 md:flex">
-            <a href="#services" className="transition-colors hover:text-zinc-50">
+          <nav className="hidden items-center gap-7 text-xs font-semibold uppercase tracking-[0.22em] text-[#a0a0a0] md:flex">
+            <a
+              href="#services"
+              className="relative transition-colors hover:text-white after:absolute after:left-0 after:-bottom-2 after:h-px after:w-full after:origin-left after:scale-x-0 after:bg-[#f5a623] after:transition-transform hover:after:scale-x-100"
+            >
               Services
             </a>
-            <a href="#how" className="transition-colors hover:text-zinc-50">
-              How it works
+            <a
+              href="#how"
+              className="relative transition-colors hover:text-white after:absolute after:left-0 after:-bottom-2 after:h-px after:w-full after:origin-left after:scale-x-0 after:bg-[#f5a623] after:transition-transform hover:after:scale-x-100"
+            >
+              Technology
             </a>
-            <a href="#testimonials" className="transition-colors hover:text-zinc-50">
+            <a
+              href="#testimonials"
+              className="relative transition-colors hover:text-white after:absolute after:left-0 after:-bottom-2 after:h-px after:w-full after:origin-left after:scale-x-0 after:bg-[#f5a623] after:transition-transform hover:after:scale-x-100"
+            >
               Reviews
             </a>
-            <a href="#book" className="transition-colors hover:text-zinc-50">
+            <a
+              href="#book"
+              className="relative transition-colors hover:text-white after:absolute after:left-0 after:-bottom-2 after:h-px after:w-full after:origin-left after:scale-x-0 after:bg-[#f5a623] after:transition-transform hover:after:scale-x-100"
+            >
               Book
             </a>
           </nav>
           <a
             href="#book"
-            className="inline-flex items-center justify-center rounded-full bg-[#d6b25e] px-4 py-2 text-sm font-semibold text-black shadow-[0_18px_50px_-25px_rgba(214,178,94,0.9)] transition hover:bg-[#e2c371] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d6b25e]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070d0a]"
+            data-cursor="hover"
+            className="group relative inline-flex items-center justify-center overflow-hidden rounded-full border border-[#f5a623]/40 bg-transparent px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white shadow-[0_18px_60px_-30px_rgba(245,166,35,0.55)] transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5a623]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
           >
-            Book a Bay
+            <span className="absolute inset-0 -translate-x-full bg-[#f5a623] transition-transform duration-300 ease-out group-hover:translate-x-0" />
+            <span className="relative mix-blend-normal group-hover:text-black">Book a bay</span>
           </a>
+        </div>
+        <div className="mx-auto w-full max-w-6xl px-6 sm:px-8">
+          <div className="h-px w-full bg-[#f5a623]/60" />
         </div>
       </header>
 
@@ -357,92 +513,130 @@ export default function Home() {
         >
           <div className="grid items-center gap-10 md:grid-cols-[1.15fr_0.85fr]">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#d6b25e]/20 bg-black/20 px-3 py-1 text-xs font-medium text-zinc-200">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400/80" />
-                Premium bays • Tour-grade tracking • Lounge service
+              <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#00ff87]/80 shadow-[0_0_20px_rgba(0,255,135,0.35)]" />
+                The first-ever full Trackman facility in Cebu
               </div>
 
-              <h1 className="mt-6 text-balance text-4xl font-semibold tracking-tight text-zinc-50 sm:text-5xl">
-                <span className="text-[#d6b25e]">The Fairway Club</span>
-                <span className="block pt-3">
-                  <span className="relative">
-                    {typed}
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "ml-1 inline-block h-[1.05em] w-[2px] translate-y-[2px] bg-[#d6b25e]/80",
-                        typed.length >= "Golf. Reimagined Indoors.".length ? "animate-pulse" : "animate-pulse",
-                      )}
-                    />
+              <h1 className="mt-6 font-[var(--font-display)] text-7xl font-black uppercase leading-[0.86] tracking-tighter text-white sm:text-8xl">
+                <span className="block">
+                  <span className={cn("inline-block will-change-transform", revealed >= 1 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2")}>
+                    {heroWords[0]}
+                  </span>{" "}
+                  <span
+                    className={cn(
+                      "inline-block will-change-transform transition-all duration-300",
+                      revealed >= 2 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
+                    )}
+                  >
+                    {heroWords[1]}
+                  </span>
+                </span>
+                <span className="block pt-2 text-[#f5a623] [text-shadow:0_0_40px_rgba(245,166,35,0.15)]">
+                  <span
+                    className={cn(
+                      "inline-block will-change-transform transition-all duration-300",
+                      revealed >= 3 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
+                    )}
+                  >
+                    {heroWords[2]}
+                  </span>{" "}
+                  <span
+                    className={cn(
+                      "inline-block will-change-transform transition-all duration-300",
+                      revealed >= 4 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
+                    )}
+                  >
+                    {heroWords[3]}
                   </span>
                 </span>
               </h1>
 
-              <p className="mt-5 max-w-xl text-pretty text-base leading-7 text-zinc-300">
-                A high-end indoor golf simulator lounge built for clean vibes, crisp data, and unforgettable rounds—
-                rain or shine.
+              <p className="mt-5 max-w-xl text-pretty text-base leading-7 text-[#a0a0a0]">
+                Cebu’s newest indoor golf & lifestyle hub, powered by Trackman—premium bays, crisp data, and a lounge
+                experience built for serious energy.
               </p>
 
               <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <a
                   href="#book"
-                  className="inline-flex items-center justify-center rounded-full bg-[#d6b25e] px-6 py-3 text-sm font-semibold text-black shadow-[0_22px_60px_-28px_rgba(214,178,94,0.95)] transition hover:bg-[#e2c371] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d6b25e]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070d0a]"
+                  data-cursor="hover"
+                  className="group relative inline-flex items-center justify-center overflow-hidden rounded-full bg-transparent px-7 py-3 text-xs font-black uppercase tracking-[0.22em] text-white shadow-[0_24px_70px_-34px_rgba(245,166,35,0.9)] ring-1 ring-[#f5a623]/40 transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5a623]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a] animate-[ctaPulse_2.6s_ease-in-out_infinite]"
                 >
-                  Book a Bay
+                  <span className="absolute inset-0 -translate-x-full bg-[#f5a623] transition-transform duration-300 ease-out group-hover:translate-x-0" />
+                  <span className="relative group-hover:text-black">Book your session</span>
                 </a>
                 <a
                   href="#services"
-                  className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-zinc-100 backdrop-blur transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070d0a]"
+                  data-cursor="hover"
+                  className="group relative inline-flex items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 px-7 py-3 text-xs font-black uppercase tracking-[0.22em] text-white backdrop-blur transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
                 >
-                  Explore services
+                  <span className="absolute inset-0 -translate-x-full bg-white/10 transition-transform duration-300 ease-out group-hover:translate-x-0" />
+                  <span className="relative">Explore packages</span>
                 </a>
               </div>
 
-              <div className="mt-8 flex flex-wrap gap-3 text-xs text-zinc-300/90">
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Ultra-quiet bays</div>
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Leather lounge seating</div>
-                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Shot replay + analytics</div>
+              <div className="mt-8 flex flex-wrap gap-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Trackman iO</div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1">VIP suites + bays</div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1">Saved shots in app</div>
               </div>
             </div>
 
             <div className="relative">
-              <div className="absolute inset-0 rounded-3xl bg-gradient-to-b from-[#d6b25e]/15 via-emerald-400/10 to-transparent blur-2xl" />
-              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/30 p-6 backdrop-blur">
+              <div className="absolute inset-0 rounded-3xl bg-gradient-to-b from-[#f5a623]/18 via-[#00ff87]/12 to-transparent blur-2xl" />
+              <div className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-white/5 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur">
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="text-sm font-semibold text-zinc-50">Tonight’s vibe</div>
-                    <div className="mt-1 text-xs text-zinc-400">Modern lounge • Quiet confidence</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+                      Technology
+                    </div>
+                    <div className="mt-2 font-[var(--font-display)] text-2xl font-black uppercase tracking-tight text-white">
+                      Track. Analyze. Repeat.
+                    </div>
                   </div>
-                  <div className="rounded-full border border-[#d6b25e]/20 bg-[#d6b25e]/10 px-3 py-1 text-xs font-medium text-[#e8d49c]">
+                  <div className="rounded-full border border-[#f5a623]/30 bg-[#f5a623]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#f5a623]">
                     Open 10a–11p
                   </div>
                 </div>
 
                 <div className="mt-6 grid gap-3">
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="rounded-2xl border border-white/[0.06] bg-black/30 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-semibold text-zinc-50">Launch Monitor</div>
-                      <div className="text-xs text-zinc-400">Tour-grade</div>
+                      <div className="font-[var(--font-display)] text-lg font-black uppercase tracking-tight text-white">
+                        Trackman iO
+                      </div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+                        Tour-grade
+                      </div>
                     </div>
-                    <div className="mt-2 text-xs text-zinc-300">
+                    <div className="mt-2 text-sm text-[#a0a0a0]">
                       Carry • Spin • Club path • Face angle • Dispersion
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="rounded-2xl border border-white/[0.06] bg-black/30 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-semibold text-zinc-50">Courses</div>
-                      <div className="text-xs text-zinc-400">Global</div>
+                      <div className="font-[var(--font-display)] text-lg font-black uppercase tracking-tight text-white">
+                        Range + courses
+                      </div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+                        Global
+                      </div>
                     </div>
-                    <div className="mt-2 text-xs text-zinc-300">
+                    <div className="mt-2 text-sm text-[#a0a0a0]">
                       Play bucket-list layouts with smooth visuals and instant replay.
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="rounded-2xl border border-white/[0.06] bg-black/30 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-semibold text-zinc-50">Comfort</div>
-                      <div className="text-xs text-zinc-400">Premium</div>
+                      <div className="font-[var(--font-display)] text-lg font-black uppercase tracking-tight text-white">
+                        Lounge
+                      </div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+                        Premium
+                      </div>
                     </div>
-                    <div className="mt-2 text-xs text-zinc-300">
+                    <div className="mt-2 text-sm text-[#a0a0a0]">
                       Dim lighting, refined finishes, and service that stays out of the way.
                     </div>
                   </div>
@@ -452,42 +646,122 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Services */}
-        <section id="services" className="mx-auto w-full max-w-6xl px-6 py-14 sm:px-8">
-          <div className="flex flex-col gap-3">
-            <h2 className="text-2xl font-semibold tracking-tight text-zinc-50">Bays & packages</h2>
-            <p className="max-w-2xl text-sm leading-6 text-zinc-300">
-              Choose your pace—casual rounds, elevated events, or coaching with data-forward feedback.
+        {/* Diagonal divider */}
+        <div aria-hidden="true" className="relative z-10">
+          <div className="mx-auto w-full max-w-6xl px-6 sm:px-8">
+            <div className="h-px w-full bg-[#f5a623]/60" />
+          </div>
+          <div className="mx-auto w-full max-w-6xl px-6 sm:px-8">
+            <div
+              className="h-10 w-full bg-[#0f0f0f]"
+              style={{ clipPath: "polygon(0 0, 100% 0, 100% 35%, 0 100%)" }}
+            />
+          </div>
+        </div>
+
+        {/* Stats */}
+        <section
+          className="mx-auto w-full max-w-6xl bg-[#0f0f0f] px-6 py-14 sm:px-8"
+          data-reveal
+          ref={statsRef}
+        >
+          <div className="grid gap-10 md:grid-cols-[0.6fr_0.4fr] md:items-end">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">Performance</div>
+              <h2 className="mt-3 font-[var(--font-display)] text-5xl font-black uppercase tracking-tighter text-white sm:text-6xl">
+                Numbers that hit harder.
+              </h2>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-[#a0a0a0]">
+                Athletic energy, premium finish. Train with real data and save every swing in the Trackman Golf app.
+              </p>
+            </div>
+            <div className="rounded-3xl border border-white/[0.06] bg-black/30 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+                Limited offer
+              </div>
+              <div className="mt-3 font-[var(--font-display)] text-3xl font-black uppercase tracking-tight text-white">
+                First 50 persons only.
+              </div>
+              <a
+                href="#book"
+                data-cursor="hover"
+                className="mt-5 inline-flex w-full items-center justify-center rounded-2xl border border-[#f5a623]/35 bg-transparent px-4 py-3 text-xs font-black uppercase tracking-[0.22em] text-white transition hover:bg-[#f5a623] hover:text-black"
+              >
+                Inquire now
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-10 grid gap-6 border-t border-[#f5a623]/60 pt-10 md:grid-cols-3">
+            {[
+              { value: stats.members, suffix: "", label: "members (first 50 promo)" },
+              { value: stats.bays, suffix: "+", label: "bay types (regular + VIP)" },
+              { value: stats.courses, suffix: "+", label: "courses & range modes" },
+            ].map((s, i) => (
+              <div key={s.label} className="reveal-child" style={{ ["--d" as never]: `${i * 90}ms` }}>
+                <div className="font-[var(--font-display)] text-6xl font-black uppercase tracking-tighter text-[#f5a623]">
+                  {s.value}
+                  {s.suffix}
+                </div>
+                <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+                  {s.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Services / Memberships */}
+        <section id="services" className="mx-auto w-full max-w-6xl bg-[#0a0a0a] px-6 py-16 sm:px-8" data-reveal>
+          <div className="h-px w-full bg-[#f5a623]/60" />
+          <div className="pt-10">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+              01 — Memberships & bay rates
+            </div>
+            <h2 className="mt-3 font-[var(--font-display)] text-5xl font-black uppercase tracking-tighter text-white sm:text-6xl">
+              Choose your lane.
+            </h2>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-[#a0a0a0]">
+              Regular bays for everyday rounds. VIP suites for private energy. Membership to train like a pro.
             </p>
           </div>
 
           <div className="mt-8 grid gap-5 md:grid-cols-3">
-            {services.map(({ title, price, desc, Icon }) => (
+            {services.map(({ title, price, desc, Icon }, idx) => (
               <div
                 key={title}
-                className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur transition hover:bg-white/7"
+                className="group relative overflow-hidden rounded-3xl border border-white/[0.06] bg-white/5 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur transition-all duration-300 hover:-translate-y-2 hover:border-[#f5a623]/45 hover:bg-white/7 hover:shadow-[0_30px_90px_-55px_rgba(245,166,35,0.8)]"
               >
-                <div className="absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100">
-                  <div className="absolute -top-20 left-10 h-52 w-52 rounded-full bg-[#d6b25e]/10 blur-3xl" />
-                  <div className="absolute -bottom-20 right-10 h-52 w-52 rounded-full bg-emerald-400/10 blur-3xl" />
+                <div className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                  <div className="absolute -top-20 left-10 h-52 w-52 rounded-full bg-[#f5a623]/12 blur-3xl" />
+                  <div className="absolute -bottom-20 right-10 h-52 w-52 rounded-full bg-[#00ff87]/10 blur-3xl" />
+                </div>
+                <div className="pointer-events-none absolute -right-3 -top-6 font-[var(--font-display)] text-[130px] font-black uppercase tracking-tighter text-white/5">
+                  {String(idx + 1).padStart(2, "0")}
                 </div>
                 <div className="relative">
                   <div className="flex items-center justify-between">
-                    <div className="grid h-12 w-12 place-items-center rounded-2xl border border-[#d6b25e]/20 bg-black/20 text-[#e8d49c]">
+                    <div className="grid h-12 w-12 place-items-center rounded-2xl border border-[#f5a623]/25 bg-black/30 text-[#f5a623] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
                       <Icon className="h-6 w-6" />
                     </div>
-                    <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-semibold text-zinc-100">
+                    <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white">
                       {price}
                     </div>
                   </div>
-                  <div className="mt-5 text-lg font-semibold text-zinc-50">{title}</div>
-                  <div className="mt-2 text-sm leading-6 text-zinc-300">{desc}</div>
+                  <div className="mt-5 font-[var(--font-display)] text-2xl font-black uppercase tracking-tight text-white">
+                    {title}
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-[#a0a0a0]">{desc}</div>
                   <a
                     href="#book"
-                    className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#d6b25e] transition hover:text-[#e2c371]"
+                    data-cursor="hover"
+                    className="group/cta mt-6 inline-flex items-center gap-3 text-xs font-black uppercase tracking-[0.22em] text-white"
                   >
-                    Book this
-                    <span aria-hidden="true" className="translate-y-[-1px]">
+                    <span className="relative">
+                      Book / inquire
+                      <span className="absolute -bottom-1 left-0 h-px w-full origin-left scale-x-0 bg-[#f5a623] transition-transform duration-300 group-hover/cta:scale-x-100" />
+                    </span>
+                    <span aria-hidden="true" className="text-[#f5a623]">
                       →
                     </span>
                   </a>
@@ -497,44 +771,80 @@ export default function Home() {
           </div>
         </section>
 
-        {/* How it works */}
-        <section id="how" className="mx-auto w-full max-w-6xl px-6 py-14 sm:px-8">
-          <div className="grid gap-10 rounded-3xl border border-white/10 bg-black/20 px-6 py-10 backdrop-blur sm:px-10 md:grid-cols-[0.9fr_1.1fr] md:items-center">
-            <div>
-              <h2 className="text-2xl font-semibold tracking-tight text-zinc-50">How it works</h2>
-              <p className="mt-3 text-sm leading-6 text-zinc-300">
-                Simple from reservation to final putt. We’ll keep it seamless—so you can stay in the zone.
-              </p>
+        {/* Technology */}
+        <section id="how" className="mx-auto w-full max-w-6xl bg-[#0f0f0f] px-6 py-16 sm:px-8" data-reveal>
+          <div className="h-px w-full bg-[#f5a623]/60" />
+          <div className="pt-10">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+              02 — Technology
             </div>
-            <div className="grid gap-4">
-              {steps.map(({ title, desc, Icon }, idx) => (
-                <div
-                  key={title}
-                  className="flex gap-4 rounded-2xl border border-white/10 bg-white/5 p-5"
-                >
-                  <div className="grid h-11 w-11 flex-none place-items-center rounded-2xl border border-[#d6b25e]/20 bg-black/20 text-[#e8d49c]">
-                    <Icon className="h-6 w-6" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-3">
-                      <div className="text-sm font-semibold text-zinc-50">
-                        <span className="text-[#d6b25e]">{idx + 1}.</span> {title}
-                      </div>
+            <h2 className="mt-3 font-[var(--font-display)] text-5xl font-black uppercase tracking-tighter text-white sm:text-6xl">
+              Not your ordinary simulator.
+            </h2>
+          </div>
+
+          <div className="mt-8 grid gap-10 md:grid-cols-[0.6fr_0.4fr] md:items-start">
+            <div className="reveal-child" style={{ ["--d" as never]: "0ms" }}>
+              <p className="max-w-3xl text-sm leading-6 text-[#a0a0a0]">
+                Trackman iO blends radar, infrared, and high-speed imaging for real-time club + ball data. Every hit
+                is saved in the Trackman Golf app—your stats, anytime you want.
+              </p>
+              <div className="mt-8 grid gap-4">
+                {steps.map(({ title, desc, Icon }, idx) => (
+                  <div
+                    key={title}
+                    className="group flex gap-4 rounded-2xl border border-white/[0.06] bg-black/30 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:border-[#00ff87]/25"
+                  >
+                    <div className="grid h-11 w-11 flex-none place-items-center rounded-2xl border border-[#f5a623]/25 bg-black/30 text-[#f5a623] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                      <Icon className="h-6 w-6" />
                     </div>
-                    <div className="mt-1 text-sm leading-6 text-zinc-300">{desc}</div>
+                    <div className="min-w-0">
+                      <div className="font-[var(--font-display)] text-lg font-black uppercase tracking-tight text-white">
+                        <span className="text-[#f5a623]">{String(idx + 1).padStart(2, "0")}</span> {title}
+                      </div>
+                      <div className="mt-1 text-sm leading-6 text-[#a0a0a0]">{desc}</div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+            </div>
+
+            {/* Asymmetric visual/stat */}
+            <div className="reveal-child rounded-3xl border border-white/[0.06] bg-[radial-gradient(700px_380px_at_50%_20%,rgba(0,255,135,0.14),transparent_60%)] bg-black/30 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]" style={{ ["--d" as never]: "120ms" }}>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+                Screen light glow
+              </div>
+              <div className="mt-3 font-[var(--font-display)] text-3xl font-black uppercase tracking-tight text-white">
+                See every shot.
+              </div>
+              <div className="mt-4 grid gap-3">
+                {[
+                  { k: "Carry", v: "Dial distance in real time" },
+                  { k: "Spin", v: "Control flight + stopping power" },
+                  { k: "Face/Path", v: "Build repeatable strike" },
+                ].map((r) => (
+                  <div key={r.k} className="flex items-center justify-between border-b border-white/10 py-3">
+                    <div className="text-xs font-black uppercase tracking-[0.22em] text-white">{r.k}</div>
+                    <div className="text-xs uppercase tracking-[0.22em] text-[#a0a0a0]">{r.v}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </section>
 
         {/* Testimonials */}
-        <section id="testimonials" className="mx-auto w-full max-w-6xl px-6 py-14 sm:px-8">
+        <section id="testimonials" className="mx-auto w-full max-w-6xl bg-[#0a0a0a] px-6 py-16 sm:px-8" data-reveal>
+          <div className="h-px w-full bg-[#f5a623]/60" />
           <div className="flex items-end justify-between gap-6">
             <div>
-              <h2 className="text-2xl font-semibold tracking-tight text-zinc-50">What guests say</h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
+              <div className="pt-10 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+                03 — Reviews
+              </div>
+              <h2 className="mt-3 font-[var(--font-display)] text-5xl font-black uppercase tracking-tighter text-white sm:text-6xl">
+                Where every swing connects.
+              </h2>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-[#a0a0a0]">
                 Premium feel. Real data. A space that makes you want to come back.
               </p>
             </div>
@@ -544,19 +854,23 @@ export default function Home() {
             {testimonials.map((t) => (
               <figure
                 key={t.name}
-                className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur"
+                className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-white/5 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur transition hover:-translate-y-1 hover:border-[#f5a623]/35"
               >
                 <div className="absolute inset-0 opacity-70">
-                  <div className="absolute -top-24 left-6 h-40 w-40 rounded-full bg-emerald-400/10 blur-3xl" />
+                  <div className="absolute -top-24 left-6 h-40 w-40 rounded-full bg-[#00ff87]/10 blur-3xl" />
                 </div>
                 <div className="relative">
-                  <div className="text-sm leading-7 text-zinc-200">“{t.quote}”</div>
+                  <div className="text-sm leading-7 text-[#a0a0a0]">“{t.quote}”</div>
                   <figcaption className="mt-6 flex items-center justify-between gap-4">
                     <div>
-                      <div className="text-sm font-semibold text-zinc-50">{t.name}</div>
-                      <div className="text-xs text-zinc-400">{t.meta}</div>
+                      <div className="font-[var(--font-display)] text-lg font-black uppercase tracking-tight text-white">
+                        {t.name}
+                      </div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+                        {t.meta}
+                      </div>
                     </div>
-                    <div className="text-xs font-semibold text-[#e8d49c]">★★★★★</div>
+                    <div className="text-xs font-black uppercase tracking-[0.22em] text-[#f5a623]">★★★★★</div>
                   </figcaption>
                 </div>
               </figure>
@@ -565,32 +879,44 @@ export default function Home() {
         </section>
 
         {/* Contact / Booking */}
-        <section id="book" className="mx-auto w-full max-w-6xl px-6 pb-20 pt-14 sm:px-8">
-          <div className="grid gap-8 rounded-3xl border border-white/10 bg-black/25 p-6 backdrop-blur sm:p-10 md:grid-cols-[0.95fr_1.05fr]">
+        <section id="book" className="mx-auto w-full max-w-6xl bg-[#0f0f0f] px-6 pb-20 pt-16 sm:px-8" data-reveal>
+          <div className="h-px w-full bg-[#f5a623]/60" />
+          <div className="mt-10 grid gap-8 rounded-3xl border border-white/[0.06] bg-black/30 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur sm:p-10 md:grid-cols-[0.95fr_1.05fr]">
             <div>
-              <h2 className="text-2xl font-semibold tracking-tight text-zinc-50">Contact & booking</h2>
-              <p className="mt-3 text-sm leading-6 text-zinc-300">
-                Reserve a bay, plan a private event, or ask about coaching. We’ll respond quickly.
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
+                04 — Contact
+              </div>
+              <h2 className="mt-3 font-[var(--font-display)] text-5xl font-black uppercase tracking-tighter text-white sm:text-6xl">
+                Book your session.
+              </h2>
+              <p className="mt-4 text-sm leading-6 text-[#a0a0a0]">
+                Reserve a bay, plan a private event, or ask about membership/coaching. We’ll respond quickly.
               </p>
 
-              <div className="mt-7 grid gap-4 text-sm text-zinc-200">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs font-semibold tracking-wide text-zinc-400">Address</div>
-                  <div className="mt-1 font-medium text-zinc-50">1440 Greenline Ave, Suite 12, Portland, OR</div>
+              <div className="mt-7 grid gap-4 text-sm text-white">
+                <div className="rounded-2xl border border-white/[0.06] bg-white/5 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">Address</div>
+                  <div className="mt-2 font-[var(--font-display)] text-xl font-black uppercase tracking-tight text-white">
+                    SM JMall, Cebu
+                  </div>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs font-semibold tracking-wide text-zinc-400">Phone</div>
-                  <div className="mt-1 font-medium text-zinc-50">(503) 555-0199</div>
+                <div className="rounded-2xl border border-white/[0.06] bg-white/5 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">Phone</div>
+                  <div className="mt-2 font-[var(--font-display)] text-xl font-black uppercase tracking-tight text-white">
+                    (032) 555-0199
+                  </div>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs font-semibold tracking-wide text-zinc-400">Hours</div>
-                  <div className="mt-1 font-medium text-zinc-50">Daily 10:00am – 11:00pm</div>
+                <div className="rounded-2xl border border-white/[0.06] bg-white/5 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">Hours</div>
+                  <div className="mt-2 font-[var(--font-display)] text-xl font-black uppercase tracking-tight text-white">
+                    Daily 10:00am – 11:00pm
+                  </div>
                 </div>
               </div>
             </div>
 
             <form
-              className="rounded-2xl border border-white/10 bg-white/5 p-5 sm:p-6"
+              className="rounded-2xl border border-white/[0.06] bg-white/5 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:p-6"
               onSubmit={(e) => {
                 e.preventDefault();
                 const fd = new FormData(e.currentTarget);
@@ -601,7 +927,7 @@ export default function Home() {
             >
               <div className="grid gap-4">
                 <div className="grid gap-1.5">
-                  <label htmlFor="name" className="text-xs font-semibold tracking-wide text-zinc-300">
+                  <label htmlFor="name" className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
                     Name
                   </label>
                   <input
@@ -609,13 +935,13 @@ export default function Home() {
                     name="name"
                     autoComplete="name"
                     placeholder="Your name"
-                    className="h-11 rounded-xl border border-white/10 bg-black/30 px-4 text-sm text-zinc-50 placeholder:text-zinc-500 outline-none transition focus:border-[#d6b25e]/50 focus:ring-2 focus:ring-[#d6b25e]/20"
+                    className="h-11 rounded-xl border border-white/[0.06] bg-black/40 px-4 text-sm text-white placeholder:text-[#666] outline-none transition focus:border-[#f5a623]/60 focus:ring-2 focus:ring-[#f5a623]/20"
                   />
                 </div>
 
                 <div className="grid gap-1.5 sm:grid-cols-2">
                   <div className="grid gap-1.5">
-                    <label htmlFor="email" className="text-xs font-semibold tracking-wide text-zinc-300">
+                    <label htmlFor="email" className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
                       Email
                     </label>
                     <input
@@ -625,11 +951,11 @@ export default function Home() {
                       required
                       autoComplete="email"
                       placeholder="you@company.com"
-                      className="h-11 rounded-xl border border-white/10 bg-black/30 px-4 text-sm text-zinc-50 placeholder:text-zinc-500 outline-none transition focus:border-[#d6b25e]/50 focus:ring-2 focus:ring-[#d6b25e]/20"
+                      className="h-11 rounded-xl border border-white/[0.06] bg-black/40 px-4 text-sm text-white placeholder:text-[#666] outline-none transition focus:border-[#f5a623]/60 focus:ring-2 focus:ring-[#f5a623]/20"
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <label htmlFor="phone" className="text-xs font-semibold tracking-wide text-zinc-300">
+                    <label htmlFor="phone" className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
                       Phone
                     </label>
                     <input
@@ -637,20 +963,20 @@ export default function Home() {
                       name="phone"
                       autoComplete="tel"
                       placeholder="(555) 123-4567"
-                      className="h-11 rounded-xl border border-white/10 bg-black/30 px-4 text-sm text-zinc-50 placeholder:text-zinc-500 outline-none transition focus:border-[#d6b25e]/50 focus:ring-2 focus:ring-[#d6b25e]/20"
+                      className="h-11 rounded-xl border border-white/[0.06] bg-black/40 px-4 text-sm text-white placeholder:text-[#666] outline-none transition focus:border-[#f5a623]/60 focus:ring-2 focus:ring-[#f5a623]/20"
                     />
                   </div>
                 </div>
 
                 <div className="grid gap-1.5 sm:grid-cols-2">
                   <div className="grid gap-1.5">
-                    <label htmlFor="service" className="text-xs font-semibold tracking-wide text-zinc-300">
+                    <label htmlFor="service" className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
                       Package
                     </label>
                     <select
                       id="service"
                       name="service"
-                      className="h-11 rounded-xl border border-white/10 bg-black/30 px-4 text-sm text-zinc-50 outline-none transition focus:border-[#d6b25e]/50 focus:ring-2 focus:ring-[#d6b25e]/20"
+                      className="h-11 rounded-xl border border-white/[0.06] bg-black/40 px-4 text-sm text-white outline-none transition focus:border-[#f5a623]/60 focus:ring-2 focus:ring-[#f5a623]/20"
                       defaultValue="Regular Bay"
                     >
                       <option>Regular Bay</option>
@@ -659,20 +985,20 @@ export default function Home() {
                     </select>
                   </div>
                   <div className="grid gap-1.5">
-                    <label htmlFor="date" className="text-xs font-semibold tracking-wide text-zinc-300">
+                    <label htmlFor="date" className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
                       Preferred date
                     </label>
                     <input
                       id="date"
                       name="date"
                       type="date"
-                      className="h-11 rounded-xl border border-white/10 bg-black/30 px-4 text-sm text-zinc-50 outline-none transition focus:border-[#d6b25e]/50 focus:ring-2 focus:ring-[#d6b25e]/20"
+                      className="h-11 rounded-xl border border-white/[0.06] bg-black/40 px-4 text-sm text-white outline-none transition focus:border-[#f5a623]/60 focus:ring-2 focus:ring-[#f5a623]/20"
                     />
                   </div>
                 </div>
 
                 <div className="grid gap-1.5">
-                  <label htmlFor="message" className="text-xs font-semibold tracking-wide text-zinc-300">
+                  <label htmlFor="message" className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
                     Notes
                   </label>
                   <textarea
@@ -680,18 +1006,20 @@ export default function Home() {
                     name="message"
                     rows={4}
                     placeholder="Anything we should know? (Lefty setup, group size, coaching goals, etc.)"
-                    className="resize-none rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-zinc-50 placeholder:text-zinc-500 outline-none transition focus:border-[#d6b25e]/50 focus:ring-2 focus:ring-[#d6b25e]/20"
+                    className="resize-none rounded-xl border border-white/[0.06] bg-black/40 px-4 py-3 text-sm text-white placeholder:text-[#666] outline-none transition focus:border-[#f5a623]/60 focus:ring-2 focus:ring-[#f5a623]/20"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="mt-1 inline-flex h-11 items-center justify-center rounded-xl bg-[#d6b25e] px-5 text-sm font-semibold text-black shadow-[0_20px_55px_-30px_rgba(214,178,94,1)] transition hover:bg-[#e2c371] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d6b25e]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070d0a]"
+                  data-cursor="hover"
+                  className="group relative mt-1 inline-flex h-12 items-center justify-center overflow-hidden rounded-xl bg-transparent px-5 text-xs font-black uppercase tracking-[0.22em] text-white shadow-[0_22px_70px_-38px_rgba(245,166,35,0.95)] ring-1 ring-[#f5a623]/45 transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5a623]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
                 >
-                  Request booking
+                  <span className="absolute inset-0 -translate-x-full bg-[#f5a623] transition-transform duration-300 ease-out group-hover:translate-x-0" />
+                  <span className="relative group-hover:text-black">Request booking</span>
                 </button>
 
-                <p className="text-xs leading-5 text-zinc-400">
+                <p className="text-xs leading-5 text-[#a0a0a0]">
                   By submitting, you’re requesting a reservation. We’ll confirm availability by email or phone.
                 </p>
               </div>
@@ -699,19 +1027,20 @@ export default function Home() {
           </div>
         </section>
 
-        <footer className="mx-auto w-full max-w-6xl px-6 pb-10 sm:px-8">
-          <div className="flex flex-col gap-3 border-t border-white/10 pt-8 text-sm text-zinc-400 md:flex-row md:items-center md:justify-between">
+        <footer className="mx-auto w-full max-w-6xl bg-[#0a0a0a] px-6 pb-10 sm:px-8">
+          <div className="h-px w-full bg-[#f5a623]/60" />
+          <div className="flex flex-col gap-3 pt-8 text-sm text-[#a0a0a0] md:flex-row md:items-center md:justify-between">
             <div>
-              <span className="text-zinc-200">The Fairway Club</span> • Indoor simulator lounge
+              <span className="text-white">iSwing PH</span> • Trackman indoor golf lounge
             </div>
             <div className="flex items-center gap-4">
-              <a href="#services" className="transition hover:text-zinc-200">
+              <a href="#services" className="transition hover:text-white">
                 Services
               </a>
-              <a href="#how" className="transition hover:text-zinc-200">
-                How it works
+              <a href="#how" className="transition hover:text-white">
+                Technology
               </a>
-              <a href="#book" className="transition hover:text-zinc-200">
+              <a href="#book" className="transition hover:text-white">
                 Book
               </a>
             </div>
@@ -720,6 +1049,10 @@ export default function Home() {
       </main>
 
       <style jsx global>{`
+        :root {
+          --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+        }
+
         @keyframes floatA {
           0%,
           100% {
@@ -736,6 +1069,52 @@ export default function Home() {
           }
           50% {
             transform: translate3d(-16px, 10px, 0);
+          }
+        }
+
+        @keyframes ctaPulse {
+          0%,
+          100% {
+            box-shadow: 0 24px 70px -34px rgba(245, 166, 35, 0.7);
+          }
+          50% {
+            box-shadow: 0 24px 70px -30px rgba(245, 166, 35, 1);
+          }
+        }
+
+        [data-reveal] {
+          opacity: 0;
+          transform: translate3d(0, 18px, 0);
+          transition: opacity 800ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            transform 800ms cubic-bezier(0.2, 0.8, 0.2, 1);
+          will-change: opacity, transform;
+        }
+
+        [data-reveal].is-revealed {
+          opacity: 1;
+          transform: translate3d(0, 0, 0);
+        }
+
+        .reveal-child {
+          opacity: 0;
+          transform: translate3d(0, 14px, 0);
+          transition: opacity 650ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            transform 650ms cubic-bezier(0.2, 0.8, 0.2, 1);
+          transition-delay: var(--d, 0ms);
+          will-change: opacity, transform;
+        }
+
+        [data-reveal].is-revealed .reveal-child {
+          opacity: 1;
+          transform: translate3d(0, 0, 0);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          [data-reveal],
+          .reveal-child {
+            transition: none !important;
+            transform: none !important;
+            opacity: 1 !important;
           }
         }
       `}</style>
