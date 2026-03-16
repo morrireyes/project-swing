@@ -283,6 +283,8 @@ export default function Home() {
   const statsRef = useRef<HTMLElement | null>(null);
   const [entered, setEntered] = useState(false);
   const [parallax, setParallax] = useState({ x: 0, y: 0 });
+  const [navOpen, setNavOpen] = useState(false);
+  const [enableCursor, setEnableCursor] = useState(false);
   const heroWords = useMemo(() => ["CEBU'S", "FIRST", "TRACKMAN", "FACILITY."], []);
   const revealed = useWordReveal(heroWords, { startDelayMs: 260, wordEveryMs: 120 });
   const [statsActive, setStatsActive] = useState(false);
@@ -291,6 +293,25 @@ export default function Home() {
   useEffect(() => {
     const id = window.setTimeout(() => setEntered(true), 60);
     return () => window.clearTimeout(id);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mqPointerFine = window.matchMedia("(pointer: fine)");
+    const mqMinLg = window.matchMedia("(min-width: 1024px)");
+
+    const update = () => {
+      setEnableCursor(mqPointerFine.matches && mqMinLg.matches);
+    };
+
+    update();
+    mqPointerFine.addEventListener("change", update);
+    mqMinLg.addEventListener("change", update);
+
+    return () => {
+      mqPointerFine.removeEventListener("change", update);
+      mqMinLg.removeEventListener("change", update);
+    };
   }, []);
 
   useEffect(() => {
@@ -417,11 +438,11 @@ export default function Home() {
 
   return (
     <div
-      className="min-h-screen cursor-none bg-[#0a0a0a] text-white selection:bg-[#f5a623]/30 selection:text-white"
+      className="min-h-screen bg-[#0a0a0a] text-white selection:bg-[#f5a623]/30 selection:text-white lg:cursor-none"
       onMouseMove={onMove}
       onMouseLeave={onLeave}
     >
-      <PremiumCursor />
+      {enableCursor ? <PremiumCursor /> : null}
       {/* Background */}
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(900px_600px_at_50%_35%,rgba(0,255,135,0.14),transparent_58%),radial-gradient(1200px_700px_at_20%_0%,rgba(245,166,35,0.16),transparent_62%),radial-gradient(900px_650px_at_100%_20%,rgba(0,255,135,0.10),transparent_55%)]" />
@@ -445,7 +466,7 @@ export default function Home() {
       </div>
 
       <header className="relative z-10">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5 sm:px-8">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4 sm:px-6 md:px-8 md:py-5">
           <div className="flex items-center gap-3">
             <div className="grid h-10 w-10 place-items-center rounded-xl border border-white/[0.06] bg-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
               <span className="font-[var(--font-display)] text-sm font-black tracking-[0.22em] text-[#f5a623]">
@@ -487,10 +508,38 @@ export default function Home() {
               Book
             </a>
           </nav>
+          {/* Mobile menu button */}
+          <button
+            type="button"
+            aria-label="Toggle navigation"
+            onClick={() => setNavOpen((v) => !v)}
+            className="relative z-20 flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/40 md:hidden"
+          >
+            <span className="relative block h-3.5 w-4">
+              <span
+                className={cn(
+                  "absolute left-0 h-0.5 w-full bg-white transition-transform duration-200",
+                  navOpen ? "top-1.5 rotate-45" : "top-0",
+                )}
+              />
+              <span
+                className={cn(
+                  "absolute left-0 h-0.5 w-full bg-white transition-opacity duration-150",
+                  navOpen ? "top-1.5 opacity-0" : "top-1.5 opacity-100",
+                )}
+              />
+              <span
+                className={cn(
+                  "absolute left-0 h-0.5 w-full bg-white transition-transform duration-200",
+                  navOpen ? "top-1.5 -rotate-45" : "top-3",
+                )}
+              />
+            </span>
+          </button>
           <a
             href="#book"
             data-cursor="hover"
-            className="group relative inline-flex items-center justify-center overflow-hidden rounded-full border border-[#f5a623]/40 bg-transparent px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white shadow-[0_18px_60px_-30px_rgba(245,166,35,0.55)] transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5a623]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
+            className="group relative hidden items-center justify-center overflow-hidden rounded-full border border-[#f5a623]/40 bg-transparent px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white shadow-[0_18px_60px_-30px_rgba(245,166,35,0.55)] transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5a623]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a] sm:inline-flex"
           >
             <span className="absolute inset-0 -translate-x-full bg-[#f5a623] transition-transform duration-300 ease-out group-hover:translate-x-0" />
             <span className="relative mix-blend-normal group-hover:text-black">Book a bay</span>
@@ -499,6 +548,48 @@ export default function Home() {
         <div className="mx-auto w-full max-w-6xl px-6 sm:px-8">
           <div className="h-px w-full bg-[#f5a623]/60" />
         </div>
+
+        {/* Mobile nav menu */}
+        {navOpen ? (
+          <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0a0a0a] px-6 pb-10 pt-6 sm:px-8 md:hidden animate-mobileMenuIn">
+            <button
+              type="button"
+              aria-label="Close navigation"
+              onClick={() => setNavOpen(false)}
+              className="ml-auto flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/40"
+            >
+              <span className="relative block h-3.5 w-3.5">
+                <span className="absolute left-0 top-1.5 h-0.5 w-full -rotate-45 bg-white" />
+                <span className="absolute left-0 top-1.5 h-0.5 w-full rotate-45 bg-white" />
+              </span>
+            </button>
+            <nav className="flex flex-1 items-center justify-center">
+              <ul className="flex flex-col items-center gap-6 text-2xl font-[var(--font-display)] font-black uppercase tracking-[0.22em] text-white">
+                {[
+                  { href: "#services", label: "Services" },
+                  { href: "#how", label: "Technology" },
+                  { href: "#testimonials", label: "Reviews" },
+                  { href: "#book", label: "Book" },
+                  { href: "#book", label: "Book a bay" },
+                ].map((item) => (
+                  <li key={item.label}>
+                    <a
+                      href={item.href}
+                      onClick={() => setNavOpen(false)}
+                      className="group relative inline-flex items-center gap-3"
+                    >
+                      <span>{item.label}</span>
+                      <span
+                        aria-hidden="true"
+                        className="h-px w-10 origin-left scale-x-0 bg-[#f5a623] transition-transform duration-200 group-hover:scale-x-100"
+                      />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </div>
+        ) : null}
       </header>
 
       <main className="relative z-10">
@@ -506,7 +597,7 @@ export default function Home() {
         <section
           ref={heroRef}
           className={cn(
-            "mx-auto w-full max-w-6xl px-6 pb-10 pt-10 sm:px-8 sm:pt-14 md:pb-16",
+            "mx-auto w-full max-w-6xl px-4 pb-10 pt-10 sm:px-6 sm:pt-12 md:px-8 md:pt-14 md:pb-16",
             "transition-all duration-1000 ease-out",
             entered ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3",
           )}
@@ -518,7 +609,7 @@ export default function Home() {
                 The first-ever full Trackman facility in Cebu
               </div>
 
-              <h1 className="mt-6 font-[var(--font-display)] text-7xl font-black uppercase leading-[0.86] tracking-tighter text-white sm:text-8xl">
+              <h1 className="mt-6 font-[var(--font-display)] text-4xl font-black uppercase leading-[0.9] tracking-tighter text-white sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl">
                 <span className="block">
                   <span className={cn("inline-block will-change-transform", revealed >= 1 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2")}>
                     {heroWords[0]}
@@ -561,7 +652,7 @@ export default function Home() {
                 <a
                   href="#book"
                   data-cursor="hover"
-                  className="group relative inline-flex items-center justify-center overflow-hidden rounded-full bg-transparent px-7 py-3 text-xs font-black uppercase tracking-[0.22em] text-white shadow-[0_24px_70px_-34px_rgba(245,166,35,0.9)] ring-1 ring-[#f5a623]/40 transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5a623]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a] animate-[ctaPulse_2.6s_ease-in-out_infinite]"
+                  className="group relative inline-flex w-full items-center justify-center overflow-hidden rounded-full bg-transparent px-7 py-3 text-xs font-black uppercase tracking-[0.22em] text-white shadow-[0_24px_70px_-34px_rgba(245,166,35,0.9)] ring-1 ring-[#f5a623]/40 transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5a623]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a] animate-[ctaPulse_2.6s_ease-in-out_infinite] sm:w-auto"
                 >
                   <span className="absolute inset-0 -translate-x-full bg-[#f5a623] transition-transform duration-300 ease-out group-hover:translate-x-0" />
                   <span className="relative group-hover:text-black">Book your session</span>
@@ -569,7 +660,7 @@ export default function Home() {
                 <a
                   href="#services"
                   data-cursor="hover"
-                  className="group relative inline-flex items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 px-7 py-3 text-xs font-black uppercase tracking-[0.22em] text-white backdrop-blur transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
+                  className="group relative inline-flex w-full items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 px-7 py-3 text-xs font-black uppercase tracking-[0.22em] text-white backdrop-blur transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a] sm:w-auto"
                 >
                   <span className="absolute inset-0 -translate-x-full bg-white/10 transition-transform duration-300 ease-out group-hover:translate-x-0" />
                   <span className="relative">Explore packages</span>
@@ -661,7 +752,7 @@ export default function Home() {
 
         {/* Stats */}
         <section
-          className="mx-auto w-full max-w-6xl bg-[#0f0f0f] px-6 py-14 sm:px-8"
+          className="mx-auto w-full max-w-6xl bg-[#0f0f0f] px-4 py-12 sm:px-6 md:px-8 md:py-14"
           data-reveal
           ref={statsRef}
         >
@@ -712,13 +803,13 @@ export default function Home() {
         </section>
 
         {/* Services / Memberships */}
-        <section id="services" className="mx-auto w-full max-w-6xl bg-[#0a0a0a] px-6 py-16 sm:px-8" data-reveal>
+        <section id="services" className="mx-auto w-full max-w-6xl bg-[#0a0a0a] px-4 py-14 sm:px-6 md:px-8 md:py-16" data-reveal>
           <div className="h-px w-full bg-[#f5a623]/60" />
           <div className="pt-10">
             <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
               01 — Memberships & bay rates
             </div>
-            <h2 className="mt-3 font-[var(--font-display)] text-5xl font-black uppercase tracking-tighter text-white sm:text-6xl">
+            <h2 className="mt-3 font-[var(--font-display)] text-3xl font-black uppercase tracking-tighter text-white sm:text-4xl md:text-5xl lg:text-6xl">
               Choose your lane.
             </h2>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-[#a0a0a0]">
@@ -772,13 +863,13 @@ export default function Home() {
         </section>
 
         {/* Technology */}
-        <section id="how" className="mx-auto w-full max-w-6xl bg-[#0f0f0f] px-6 py-16 sm:px-8" data-reveal>
+        <section id="how" className="mx-auto w-full max-w-6xl bg-[#0f0f0f] px-4 py-14 sm:px-6 md:px-8 md:py-16" data-reveal>
           <div className="h-px w-full bg-[#f5a623]/60" />
           <div className="pt-10">
             <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
               02 — Technology
             </div>
-            <h2 className="mt-3 font-[var(--font-display)] text-5xl font-black uppercase tracking-tighter text-white sm:text-6xl">
+            <h2 className="mt-3 font-[var(--font-display)] text-3xl font-black uppercase tracking-tighter text-white sm:text-4xl md:text-5xl lg:text-6xl">
               Not your ordinary simulator.
             </h2>
           </div>
@@ -834,14 +925,14 @@ export default function Home() {
         </section>
 
         {/* Testimonials */}
-        <section id="testimonials" className="mx-auto w-full max-w-6xl bg-[#0a0a0a] px-6 py-16 sm:px-8" data-reveal>
+        <section id="testimonials" className="mx-auto w-full max-w-6xl bg-[#0a0a0a] px-4 py-14 sm:px-6 md:px-8 md:py-16" data-reveal>
           <div className="h-px w-full bg-[#f5a623]/60" />
           <div className="flex items-end justify-between gap-6">
             <div>
               <div className="pt-10 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
                 03 — Reviews
               </div>
-              <h2 className="mt-3 font-[var(--font-display)] text-5xl font-black uppercase tracking-tighter text-white sm:text-6xl">
+              <h2 className="mt-3 font-[var(--font-display)] text-3xl font-black uppercase tracking-tighter text-white sm:text-4xl md:text-5xl lg:text-6xl">
                 Where every swing connects.
               </h2>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-[#a0a0a0]">
@@ -879,14 +970,14 @@ export default function Home() {
         </section>
 
         {/* Contact / Booking */}
-        <section id="book" className="mx-auto w-full max-w-6xl bg-[#0f0f0f] px-6 pb-20 pt-16 sm:px-8" data-reveal>
+        <section id="book" className="mx-auto w-full max-w-6xl bg-[#0f0f0f] px-4 pb-16 pt-14 sm:px-6 md:px-8 md:pb-20 md:pt-16" data-reveal>
           <div className="h-px w-full bg-[#f5a623]/60" />
           <div className="mt-10 grid gap-8 rounded-3xl border border-white/[0.06] bg-black/30 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur sm:p-10 md:grid-cols-[0.95fr_1.05fr]">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a0a0a0]">
                 04 — Contact
               </div>
-              <h2 className="mt-3 font-[var(--font-display)] text-5xl font-black uppercase tracking-tighter text-white sm:text-6xl">
+              <h2 className="mt-3 font-[var(--font-display)] text-3xl font-black uppercase tracking-tighter text-white sm:text-4xl md:text-5xl lg:text-6xl">
                 Book your session.
               </h2>
               <p className="mt-4 text-sm leading-6 text-[#a0a0a0]">
@@ -1013,7 +1104,7 @@ export default function Home() {
                 <button
                   type="submit"
                   data-cursor="hover"
-                  className="group relative mt-1 inline-flex h-12 items-center justify-center overflow-hidden rounded-xl bg-transparent px-5 text-xs font-black uppercase tracking-[0.22em] text-white shadow-[0_22px_70px_-38px_rgba(245,166,35,0.95)] ring-1 ring-[#f5a623]/45 transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5a623]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
+                  className="group relative mt-1 inline-flex h-12 w-full items-center justify-center overflow-hidden rounded-xl bg-transparent px-5 text-xs font-black uppercase tracking-[0.22em] text-white shadow-[0_22px_70px_-38px_rgba(245,166,35,0.95)] ring-1 ring-[#f5a623]/45 transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f5a623]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a] sm:w-auto"
                 >
                   <span className="absolute inset-0 -translate-x-full bg-[#f5a623] transition-transform duration-300 ease-out group-hover:translate-x-0" />
                   <span className="relative group-hover:text-black">Request booking</span>
@@ -1080,6 +1171,21 @@ export default function Home() {
           50% {
             box-shadow: 0 24px 70px -30px rgba(245, 166, 35, 1);
           }
+        }
+
+        @keyframes mobileMenuIn {
+          0% {
+            opacity: 0;
+            transform: translate3d(0, -10px, 0);
+          }
+          100% {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+          }
+        }
+
+        .animate-mobileMenuIn {
+          animation: mobileMenuIn 260ms ease-out;
         }
 
         [data-reveal] {
